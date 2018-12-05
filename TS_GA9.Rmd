@@ -341,25 +341,3 @@ accuracy(beerfit3, beer3)
 beerfit3$mean
 ```
 Here, we have split the data into training(beer2) and testing(beer3). Using the above evaluation metric we computed accuracy on testing data. Naive method for accuracy is found to be more reliable. The mean predicted value from the seasonal naive method is 458.
-
-
-##Overall Analysis
-
-->The above time series data on beer sales shows quaterly seasonal pattern, we then computed seasonality and trend in the time series plot, finally decomposed all the time series component.
-
-->Exponential smoothing is done using Holt winter's method on decomposed time series to forecast next 2 years beer sales then implemented ARIMA model to forecast for the next 2 year sales
-
-->there is not much difference in the predicted sales of beer from both the methods, the values are quite closer which shows that the predicted values are significant and reliable.
-
-->However, when we compare the accuracy of two methods based on RMSE values we interpret that Holt Winter's method resulted in value 9.95 whereas for ARIMA it is 9.79. After comparing all the accuracy value ME, MPE, MAPE and MASE we concluded that ARIMA model is more reliable in terms of forecasted accuracy
-
-->We concluded that the Q4 sales for the year 2019 is highest as compared to previous years there is an increase in  sales of beer each year which correspond to the number of beer consumption increasing with increase in population.
-
-->Beer market is seasonal as people consume more beer in summer as compare to winter,because beer drinkers look for a range of new qualities in their brews as well as considered the lighter drink and refreshing too.
-
-->From the forecasted plot it is clearly visible that the beer sales is the highest every year in the month of October and is the lowest in the months of April/July or it is the highest during Q4(Oct-Dec) and the lowest during the Q2(Apr-Jun) and Q3(July-Sep) the months with low temperatures.
-
-->Which is well supported by the fact that the weather of Australia where October to December are the hottest months of the year and beersales is supposed to be the highest during summer.
-
-->Also we can predict that weather plays an important role in beersales.
-
