@@ -1,0 +1,365 @@
+---
+title: "Beer Sales Forecasting Using R"
+author: "Malvika"
+date: "15 March 2018"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Problem Statement: 
+
+Quarterly beer sales data has been provided in the beer.csv files.
+
+Part A) Using the Winter-Holts methods and model the data and predict beer sales for the next 2 years. 
+
+Part B) Using the ARIMA method model the data and predict for the next 2 years. 
+
+```{r}
+library(readr)
+beer <- read_csv("C:/Users/malvika mathur/Desktop/GreatLakes/Time_Series/assignment/beer.csv")
+str(beer)
+```
+
+#Step 1->Understanding Time Series Data
+
+```{r}
+sum(is.na(beer))  #there is no missing value in the dataset
+library(Hmisc)
+#total number of observation is 72 and by seeing each percentile we conclude that there is no outlier in the data
+describe(beer)  
+```
+
+
+##load important libraries
+```{r libraries}
+library(forecast)
+library(tseries)
+library(TSA)
+```
+
+##Creating time series object for exploration
+
+To store the data in a time series object, we use the ts() function in R.Here we are taking quaterly data to forecast from the year 2000
+```{r time series object}
+
+Beer_ts<-ts(beer$OzBeer,start = c(2000,1),frequency = 4)
+#plotting the time series data
+Beer_ts
+```
+
+The periodogram plot is to identify the dominant periods(or frequncies) of a time series. From this plot, the time period given is 0.25 and the frequency is calculated as 1/0.25 = 4. Therefore, we conclude that the behaviour in the series is quarterly
+```{r periodogram}
+periodogram(beer)
+```
+
+#Step 2->Exploration of time series
+
+```{r EDA}
+#Checking the data wheteher its a Timeseries data or not
+is.ts(Beer_ts)
+
+#evaluating the class
+class(Beer_ts)
+
+par(mfrow=c(1,2))
+#There is a linear trend in the time series as the time passes by and also the seasonality is getting repeated for every 4 quarters. The magnitude of the seasonal conponent is almost constant.
+plot.ts(Beer_ts)
+plot(Beer_ts,col="red",main="Beer Sales with time")
+
+scatter.smooth(Beer_ts)
+```
+
+Data is then plotted with time series with abline to understand if the data has any pattern. The abline is a simple linear regression line. Most time series patterns can be described in terms of two basic classes of components: trend and seasonality. The former represents a general systematic linear. The latter may have a formally similar nature however, it repeats itself in systematic intervals over time.
+```{r}
+plot(Beer_ts, data=beer)
+abline(reg=lm(Beer_ts~time(Beer_ts)),col="red")
+```
+
+-From the above graph we see that there is a linear trend and seasonality in the time series. Again, it seems that this time series could probably be described using an additive model, as the seasonal fluctuations are roughly constant in size over time and do not seem to depend on the level of the time series, and the random fluctuations also seem to be roughly constant in size over time.
+
+-the increasing trend of the series shows rising prosperity, greater availability of beer sales with time
+
+```{r cycle}
+cycle(Beer_ts)
+```
+
+```{r plot}
+#The plot aggregates the cycle of sales and displays an year on year trend. It clearly shows that beer sales have been increasing without fail.
+plot(aggregate(Beer_ts,FUN = mean),col ="blue",main = "Plot of Monthly Sum of Sales",
+     xlab = "Years", ylab = "Sum of Sales")
+
+monthplot(Beer_ts, main = "Monthly Beer Sales - monthplot", xlab = "Month", ylab = "ML")
+
+boxplot(Beer_ts~cycle(Beer_ts), main = "Boxplot distribution of sales quarterly wise",
+        xlab = "Quarterly", ylab = "Beer Sales")
+#The above boxplot across each quarter gives us the sense of seasonal effect. The variance and mean value in the 4th quarter is comparatively higher than the others. 
+```
+
+#Step 3-> Time Series Decomposition
+A seasonal time series consists of a trend component, a seasonal component and an irregular component. Decomposing the time series means separating the time series into these three components: that is, estimating these three components
+
+The interactions between trend and seasonality are typically classified as either additive or multiplicative. In an additive time series, the components add together to make the time series. If we have an increasing trend, we will still see roughly the same size peaks and troughs throughout the time series. If we have an increasing trend, the amplitude of seasonal activity increases. Everything becomes more exaggerated and so then it will be taken as multiplicative model.
+
+a)Stationarity
+Test for Stationarity
+
+```{r decomposition}
+kpss.test(Beer_ts)
+#The above test validates that the given data is not stationary,p value less than 0.05
+
+adf.test(Beer_ts)
+#The null hypothesis for this test is that there is a unit root. Here we cannot reject the null hypothesis so the time series is not stationary
+```
+Using the combine results of both the tests we conclude that the given time series is not stationary.
+
+b)Detect the trend
+
+To detect the underlying trend, we smoothe the time series using the "moving average". To perform the decomposition, it is vital to use a moving window of the exact size of the seasonality.
+
+```{r trend}
+par(mfrow = c(2,2))
+plot(Beer_ts, col="gray", main = "Moving Average Smoothing of order 4")
+lines(ma(Beer_ts, order = 4),col="red")
+plot(Beer_ts, col="gray", main = "Moving Average Smoothing of order 6")
+lines(ma(Beer_ts, order = 6), col = "blue")
+trend_beer = ma(Beer_ts, order = 4, centre = T)
+lines(trend_beer)
+plot(as.ts(trend_beer))
+```
+
+c)Detrend the Time Series-
+Removing the previously calculated trend from the time series will result into a new time series that clearly exposes seasonality.
+
+d)Average the Seasonality-
+From the detrended time series, it's easy to compute the average seasonality. We add the seasonality together and divide by the seasonality period
+
+e)Examining Remaining Random Noise-
+The previous steps have already extracted most of the data from the original time series, leaving behind only "random" noise.The additive formula is "Time series = Seasonal + Trend + Random", which means "Random = Time series - Seasonal - Trend"
+
+f)Reconstruct the Original Signal-
+The decomposed time series can logically be recomposed using the model formula to reproduce the original signal. The additive formula is "Time series = Seasonal + Trend + Random", which means "Random = Time series - Seasonal - Trend"
+
+Here the peak height of of the graph in the sesonal component is almost constant and hence our assumption of additive model is validated Additive: xt = Trend + Seasonal + Random
+
+The objective of STL() and Decompose() function is similar, here we will be using output of STL() function to build Holt Winters model as all estimates are based on the LOESS smoother.
+
+```{r stl}
+#using STL function
+ts_beer<-ts(Beer_ts, frequency = 4)
+stl_beer<-stl(ts_beer, "periodic")
+seasonal_stl_beer<- stl_beer$time.series[,1]
+trend_stl_beer<- stl_beer$time.series[,2]
+random_stl_beer<- stl_beer$time.series[,3]
+par(mfrow=c(2,2)) 
+plot(ts_beer)
+plot(as.ts(seasonal_stl_beer))
+plot(trend_stl_beer)
+plot(random_stl_beer)
+plot(stl_beer)
+```
+
+#Lagged scatterplot
+
+analyzing the correlation among consecutive observations in the above series is to produce a scatterplot of
+(xt, xt+k),the association seems linear and is positive.
+
+```{r lag_plot}
+lg_pot<-lag.plot(Beer_ts, do.lines=FALSE, pch=20) 
+title("Lagged Scatterplot, k=1")
+acf(Beer_ts, plot=FALSE)
+
+#Correlogram
+acf(Beer_ts)
+```
+-acf function is use to calculate correlation between different time lags, from the correlation of lag 1 wecan interpret that pearson correlation coefficient is 0.50 which shows strong correlation. 
+
+-the square of the correlation coefficient (0.50)^2=0.25,is the percentage of variability explained by the linear association between t respective predecessor. Here in this case xt explains roughly 25% variability observed in xt
+
+```{r tests}
+#The Ljung-Box approach tests the null hypothesis that a number of autocorrelation coefficients are simultaneously equal to zero.
+Box.test(Beer_ts, type="Ljung-Box")
+```
+As the p value is less than 0.05. We reject the null hypothesis hence number of autocorrelation coefficients are different from zero.
+
+##Part 1:
+
+#Step 4->Forecasts using Exponential Smoothing-Holt Winter Method
+
+```{r ESW}
+#Holt Winter's method
+WinHolt_Prediction<-HoltWinters(Beer_ts,seasonal = "additive")
+WinHolt_Prediction
+
+#The value of the sum-of-squared-errors for the in-sample forecast errors is 6737.801.
+WinHolt_Prediction$SSE
+
+```
+The output WinHolt_Prediction tells us that the estimated value of Smoothing parameters:
+ alpha: 0.1051635
+ beta : 0.3157796
+ gamma: 0.3294624
+which is very close to zero.This means that the forecasts are based on both recent and less recent observations, though there is more weight placed on recent observations.
+
+```{r EHT plot}
+#The plot shows the original time series in blue, and the forecasts as a red line. The time series of forecasts is much smoother than the time series of the original data here.
+plot(WinHolt_Prediction, col = "blue", col.predicted = "red")
+```
+
+
+#Analysis of Residuals
+
+It is quite clear than mean of Residuals is approximately zero and fluctuating over mean of zero.
+
+To test the validity of this model we should also examine the correlations between the forecast errors. If correlation exists in the error terms, it is likely that the simple exponential smoothing forecasts could be improved upon by another technique. All the lines are well within blue hashed line.
+
+```{r residual}
+#The forecasts made by HoltWinters() are stored in a named element of this list variable called "fitted"
+WinHolt_Prediction$fitted
+plot(WinHolt_Prediction$fitted)
+abline(0, 0) 
+acf(WinHolt_Prediction$fitted)
+```
+
+#Forecastes
+
+```{r forecast}
+#forecast
+library(highcharter)
+h<-hchart(forecast(WinHolt_Prediction,h=8))
+accuracy(forecast(WinHolt_Prediction,h=8))
+```
+the forecasted sales from holtwinter method for the year 2018-19:
+2018->Q1=465 ,Q2=414, Q3=438 ,Q4=439
+2019->Q1=484, Q2=433,Q3=457,Q4=558
+It seems that the quaterly sales of beer increased in 2019 when compare to the previous year.Also the Q4 sales of year 2017 was 525 which then further increased for the next two years
+
+#Step 5->Fitting ARIMA model
+
+a)Stationarity
+Earlier we performed test for stationarity, test validates that the given data is not stationary,hence differencing the above data to remove trend and seasonality to fit the ARIMA model
+
+b)Identifying the Trend and Seasonal difference for stationarity
+
+```{r ARIMA}
+nsdiffs(Beer_ts)
+ndiffs(Beer_ts)
+#The above results shows that we have to conduct one time trend differencing one time seasonal differencing, to make the series stationary.
+```
+
+c)Test for stationary after differencing
+
+```{r kpss}
+#After differencing the time series data is stationary and it is validated with p-value > 0.05.
+kpss.test(diff(log(Beer_ts)))
+```
+
+
+d)Determining Model Order 
+
+```{r model order}
+#Plotting the ACF and PACF
+acf(log(Beer_ts))
+#In the ACF plot, the spikes above the blue dotted lines are the significant lags which has influence on the current state
+acf(diff(log(Beer_ts)))
+
+pacf(log(Beer_ts))
+#From the PACF plot, we are able to see that the lag shuts off after 1 and it is approximated to 0 beyond that point.
+pacf(diff(log(Beer_ts)))
+```
+
+
+e)Fit and ARIMA Model
+
+Based on the information from the above plots, an ARIMA model is fit to the data. With different p and q values, the model is built and the best one with the lowest AIC value is selected.
+
+```{r fit arima}
+fit<-auto.arima(Beer_ts,stepwise=TRUE, approximation=FALSE)
+fit
+res<-residuals(fit)
+tsdisplay(res)
+#From the above, we are able to see the moving average and seasonal moving average coefficients which is there in the data. The sigma^2 is the value of the noise component. AIC value -254.85 is the lowest value found in the iterative process.
+```
+
+f)Plotting the residuals of ACF and PACF
+```{r acf and pacf}
+
+acf(residuals(fit), main = "Residuals of ACF")
+pacf(residuals(fit),main = "Residuals of PACF")
+```
+
+g)Evaluating Residuals
+```{r evaluation}
+#The above Ljung-Box test is carried out on residuals to see that after fitting the model what remains is actually the residuals. The test validates the data is independently distributed with a p-value > 0.05.
+Box.test(residuals(fit),lag = 4, type = "Ljung")
+```
+
+h)Forecasting
+```{r ARIMA forecast}
+pred_plot<-plot(forecast(fit,h=8,ylabel ="Beer_Sales",main="Forecasted Series"))
+pred_plot
+pred<-pred_plot$mean
+accuracy(forecast(fit,h=8))    #RMSE value 9.79
+```
+after fitting the model we interpreted that the confidence interval of Q1 for the year 2018 at 95% is 445.95-487.01, hence the mean sale of beer during Q1 will be 466.48 which further increased to 541.5 in Q4.
+
+similarly for the year 2019 Q1-Q4 sales are 485.7, 433.5, 457.8 and 559
+
+F)Evaluating Forecast Accuracy
+
+Here are some common measurements used to evaluate the forecast accracy.
+
+    MAE - Mean absolute error
+    RMSE - Root mean square error
+    MAPE - Mean absolute percentage error
+    MASE - Mean absolute scaled error
+
+Compare forecast accuracy among 4 basic forecasting models (simple average, naive method, seasonal naive, drifted model)
+```{r forecast accuracy}
+beer2 <- window(Beer_ts,start=2000,end=2017)
+
+beerfit1 <- meanf(beer2,h=8)
+beerfit2 <- rwf(beer2,h=8)
+beerfit3 <- snaive(beer2,h=8)
+
+plot(beerfit1,
+  main="Forecasts for quarterly beer production")
+lines(beerfit2$mean,col=2)
+lines(beerfit3$mean,col=3)
+lines(Beer_ts)
+legend("topleft", lty=1, col=c(4,2,3),
+  legend=c("Mean method","Naive method","Seasonal naive method"))
+
+beer3 <- window(pred,start = 2018)
+accuracy(beerfit1, beer3)
+accuracy(beerfit2, beer3)
+accuracy(beerfit3, beer3)
+beerfit3$mean
+```
+Here, we have split the data into training(beer2) and testing(beer3). Using the above evaluation metric we computed accuracy on testing data. Naive method for accuracy is found to be more reliable. The mean predicted value from the seasonal naive method is 458.
+
+
+##Overall Analysis
+
+->The above time series data on beer sales shows quaterly seasonal pattern, we then computed seasonality and trend in the time series plot, finally decomposed all the time series component.
+
+->Exponential smoothing is done using Holt winter's method on decomposed time series to forecast next 2 years beer sales then implemented ARIMA model to forecast for the next 2 year sales
+
+->there is not much difference in the predicted sales of beer from both the methods, the values are quite closer which shows that the predicted values are significant and reliable.
+
+->However, when we compare the accuracy of two methods based on RMSE values we interpret that Holt Winter's method resulted in value 9.95 whereas for ARIMA it is 9.79. After comparing all the accuracy value ME, MPE, MAPE and MASE we concluded that ARIMA model is more reliable in terms of forecasted accuracy
+
+->We concluded that the Q4 sales for the year 2019 is highest as compared to previous years there is an increase in  sales of beer each year which correspond to the number of beer consumption increasing with increase in population.
+
+->Beer market is seasonal as people consume more beer in summer as compare to winter,because beer drinkers look for a range of new qualities in their brews as well as considered the lighter drink and refreshing too.
+
+->From the forecasted plot it is clearly visible that the beer sales is the highest every year in the month of October and is the lowest in the months of April/July or it is the highest during Q4(Oct-Dec) and the lowest during the Q2(Apr-Jun) and Q3(July-Sep) the months with low temperatures.
+
+->Which is well supported by the fact that the weather of Australia where October to December are the hottest months of the year and beersales is supposed to be the highest during summer.
+
+->Also we can predict that weather plays an important role in beersales.
+
